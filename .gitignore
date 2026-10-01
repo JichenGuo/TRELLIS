@@ -396,3 +396,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# HPC logs and generated examples
+/HPC_outputs/
+/sample.glb
+/sample.ply
+/sample_gs.mp4
+/sample_mesh.mp4
+/sample_rf.mp4
