@@ -1,4 +1,4 @@
-"""Generate one mesh per RGB image, loading the TRELLIS model only once.
+"""Generate a mesh and mesh-normal MP4 per RGB image, loading the model once.
 
 Example:
     python example_batch.py
@@ -46,17 +46,20 @@ def main():
         raise SystemExit('Input images have duplicate filename stems; rename them to avoid output collisions.')
     pending = [path for path in images if args.overwrite
                or not (args.output_dir / f'{path.stem}.ply').is_file()
+               or not (args.output_dir / f'{path.stem}_mesh.mp4').is_file()
                or (args.glb and not (args.output_dir / f'{path.stem}.glb').is_file())]
     if not pending:
-        print('All requested meshes already exist. Use --overwrite to regenerate.')
+        print('All requested meshes and videos already exist. Use --overwrite to regenerate.')
         return
 
     # Set backend options before importing TRELLIS, as in example.py.
     os.environ.setdefault('SPCONV_ALGO', 'native')
+    import imageio
     import torch
     import trimesh
     from PIL import Image
     from trellis.pipelines import TrellisImageTo3DPipeline
+    from trellis.utils import render_utils
 
     if not torch.cuda.is_available():
         raise SystemExit('TRELLIS requires a CUDA GPU. Activate your TRELLIS environment with CUDA support.')
@@ -90,6 +93,9 @@ def main():
                     faces=mesh.faces.detach().cpu().numpy(),
                     process=False,
                 ).export(args.output_dir / f'{path.stem}.ply')
+                video = render_utils.render_video(mesh)['normal']
+                imageio.mimsave(args.output_dir / f'{path.stem}_mesh.mp4', video, fps=30)
+                del video
                 if args.glb:
                     glb = postprocessing_utils.to_glb(
                         outputs['gaussian'][0], mesh,
@@ -99,7 +105,7 @@ def main():
                 torch.cuda.synchronize()
                 elapsed = time.perf_counter() - start
                 writer.writerow([path.name, 'ok', f'{elapsed:.3f}', ''])
-                print(f'  Saved mesh ({elapsed:.2f}s)', flush=True)
+                print(f'  Saved mesh and video ({elapsed:.2f}s)', flush=True)
             except Exception as error:
                 failures += 1
                 writer.writerow([path.name, 'error', f'{time.perf_counter() - start:.3f}', str(error)])
@@ -111,7 +117,7 @@ def main():
                     del mesh
                 torch.cuda.empty_cache()
                 timing_file.flush()
-    print(f'Saved {len(pending) - failures}/{len(pending)} meshes to {args.output_dir}')
+    print(f'Saved {len(pending) - failures}/{len(pending)} mesh/video pairs to {args.output_dir}')
     if failures:
         raise SystemExit(1)
 
